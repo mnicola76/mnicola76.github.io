@@ -1,0 +1,129 @@
+---
+title: "Practical Machine Learning Course Project Writeup"
+date: "19-Nov-2014"
+output:
+  html_document:
+    theme: cerulean
+---
+
+<!-- For more info on RMarkdown see http://rmarkdown.rstudio.com/ -->
+
+### Introduction:
+
+The goal of this project is to predict the manner in which 6 participants perform barbell lift exercises. The data set, taken from accelormeters placed on the belt, forearm, arm, and dumbell, contains various measurements stored in approximately 150 variables/predictors. The "classe" variable in the training set represents how well the participant completed the exercise and is what we seek to predict in the testing set. 
+
+### Data Loading:
+
+The following code downloads the testing and training sets (if not present).  Once downloaded, both datasets are loaded into R.
+
+```{r}
+## Load the required libraries
+library(lattice)
+library(ggplot2)
+library(caret)
+library(randomForest)
+set.seed(12389)
+
+## Links to the data files
+pmlTrainURL <- 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv'
+pmlTestURL <- 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv'
+
+## If the training file doesn't exist, download it
+pmlTrainFile <- 'pml-training.csv'
+if (!file.exists(pmlTrainFile)) {
+    download.file(pmlTrainURL, destfile=pmlTrainFile);
+}
+
+## Likewise for the testing file
+pmlTestFile <- 'pml-testing.csv'
+if (!file.exists(pmlTestFile)) {
+    download.file(pmlTestURL, destfile=pmlTestFile);
+}
+
+## Read both files
+training <- read.csv(pmlTrainFile)
+testing <- read.csv(pmlTestFile)
+```
+
+### Data Preparation:
+
+On analysis of the data, it becomes obvious that there are quite a number of columns which are either completely filled with NAs or a majority of observations contain NAs. To simplify our training model (and save quite a substantial amount of time building it), let's remove these columns from both sets.    
+
+```{r}
+## remove 1st ID column
+training <- training[,-1]
+testing <- testing[,-1]
+
+## Remove columns from both sets which are completely (or majority) contain NA
+columnsToRemove <- colSums(is.na(testing))<nrow(testing)
+training <- training[,columnsToRemove]
+testing <- testing[,columnsToRemove]
+```
+
+### Create Training Model
+
+Before we create the model, let's split the training set further into a validation set.  We'll utilise the validation set to perform some tests on the model before we apply it to the test set.
+
+```{r}
+## From the train data, split further into a train and validation set
+## Keep the training set smallish so the model can be built in a reasonable time
+inTrain <- createDataPartition(y=training$classe, p=0.1, list=FALSE)
+validation <- training[-inTrain,]
+training <- training[inTrain,]
+```
+
+Finally, we're ready to build the model.  We'll do so using Random Forests.  One of the plusses of using Random Forests is that there is no need for cross-validation or a separate test set to get an unbiased estimate of the test set error. It is estimated internally, during the run. Following the model creation is the output from the finalModel object which details the test set error among other details.
+
+```{r}
+## Fit model using Random Forests
+fitMod <- train(classe ~ ., model="rf", data=training)
+
+print(fitMod$finalModel)
+```
+
+The test set error is low which 
+
+### Model Evaluation:
+
+With the model built, let's perform a prediction against the validation set.  Once complete, call the confusion matrix function to compare the results of the prediction against the actual values.
+
+```{r}
+## Validate by predicting on Validation set
+predictValid <- predict(fitMod, newdata=validation)
+
+## Print confusion matrix table and accuracy
+cmValid <- confusionMatrix(predictValid, validation$classe)
+print(cmValid) 
+print(paste(round(cmValid$overall[1]*100, 2), '%'))
+```
+
+For the `r length(predictValid)` rows in the validation set, the model predicts to an accuracy of `r paste(round(cmValid$overall[1]*100, 2), '%')`.  Which is a great result.  
+
+### Prediction:
+
+With the model built and validated, it's time to finally predict against the test set.  Once the prediction is complete, what follows is a list of A to E characters which corresponds to the predicted "classe" variable.
+
+```{r message=FALSE}
+## Finally, predict on test set
+predictTest <- predict(fitMod, newdata=testing)
+
+print(predictTest)
+```
+
+### Project Solution and submission
+
+The following code takes the predicted test set values and creates a text file for each of the 20 characters returned.  These files are then submitted as part of the project submission process.
+
+```{r}
+pml_write_files = function(x){
+    n = length(x)
+    for(i in 1:n){
+        filename = paste0("problem_id_",i,".txt")
+        write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+    }
+}
+
+## Write answer files for submission
+pml_write_files(predictTest)
+```
+
